@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teleprompter — Live Coding Bilangan Prima</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1e1e2e;
+    --accent: #7c6af7;
+    --accent2: #a78bfa;
+    --text: #e8e6f0;
+    --muted: #6b6880;
+    --code-bg: #0f0f1a;
+    --code-border: #2a2a40;
+    --ucap-bg: #13112a;
+    --ucap-border: #3d2fa0;
+    --section-color: #7c6af7;
+    --green: #4ade80;
+    --amber: #fbbf24;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  #topbar h1 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent2);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 1;
+  }
+
+  .btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #6a58e0; }
+  .btn:active { transform: scale(0.97); }
+  .btn.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .btn.secondary:hover { border-color: var(--accent); color: var(--accent2); background: transparent; }
+
+  .speed-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px 12px;
+  }
+  .speed-group label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  #speedSlider {
+    width: 100px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  #speedVal {
+    font-size: 12px;
+    color: var(--accent2);
+    font-weight: 600;
+    min-width: 28px;
+  }
+
+  .font-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px 10px;
+  }
+  .font-group label { font-size: 12px; color: var(--muted); }
+  #fontSlider { width: 70px; accent-color: var(--accent); cursor: pointer; }
+  #fontVal { font-size: 12px; color: var(--accent2); font-weight: 600; min-width: 30px; }
+
+  #progress-wrap {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #progressBar {
+    width: 120px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  #progressFill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    width: 0%;
+    transition: width 0.3s;
+    border-radius: 4px;
+  }
+  #progressTxt { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  /* ── FADE OVERLAYS ── */
+  #viewport {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  #viewport::before, #viewport::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 120px;
+    z-index: 5;
+    pointer-events: none;
+  }
+  #viewport::before {
+    top: 0;
+    background: linear-gradient(to bottom, var(--bg) 0%, transparent 100%);
+  }
+  #viewport::after {
+    bottom: 0;
+    background: linear-gradient(to top, var(--bg) 0%, transparent 100%);
+  }
+
+  /* ── SCROLL CONTENT ── */
+  #scroller {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    padding: 60vh 8vw 60vh;
+    will-change: transform;
+  }
+
+  /* ── CONTENT BLOCKS ── */
+  .block { margin-bottom: 32px; }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ucap-border);
+    opacity: 0.8;
+  }
+
+  /* Ucapan box */
+  .ucap {
+    background: var(--ucap-bg);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 10px 10px 0;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .ucap::before {
+    content: '🎙';
+    position: absolute;
+    top: 14px;
+    left: -14px;
+    font-size: 14px;
+    background: var(--bg);
+    padding: 2px;
+    border-radius: 50%;
+  }
+  .ucap p {
+    font-size: var(--fs, 20px);
+    line-height: 1.75;
+    color: #c4bff5;
+    font-style: italic;
+  }
+
+  /* Ketik / kode box */
+  .ketik {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .ketik-header {
+    background: #0c0c16;
+    padding: 7px 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid var(--code-border);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; }
+  .dot.y { background: #febc2e; }
+  .dot.g { background: #28c840; }
+  .ketik-label {
+    margin-left: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .ketik pre {
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: calc(var(--fs, 20px) * 0.85);
+    line-height: 1.7;
+    color: #a9b7c6;
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  /* Syntax highlight sederhana */
+  .kw { color: #cc99cd; }
+  .fn { color: #6dcff6; }
+  .str { color: #7ec699; }
+  .num { color: #f08d49; }
+  .cmt { color: #5c6370; font-style: italic; }
+  .type { color: #e8bf6a; }
+
+  /* Bagian label */
+  .bagian-label {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 14px;
+    text-transform: uppercase;
+  }
+
+  /* Cursor garis tengah */
+  #cursor-line {
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent) 20%, var(--accent2) 80%, transparent);
+    opacity: 0.25;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* Pause overlay */
+  #pause-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(10,10,15,0.7);
+    z-index: 20;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    color: var(--accent2);
+    backdrop-filter: blur(2px);
+  }
+  #pause-overlay.show { display: flex; }
+  #pause-overlay span { font-size: 16px; font-weight: 600; margin-top: 12px; color: var(--muted); }
+  #pause-overlay div { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>📺 TELEPROMPTER</h1>
+  <div class="controls">
+    <button class="btn" id="playBtn" onclick="togglePlay()">▶ Play</button>
+    <button class="btn secondary" onclick="resetScroll()">↺ Reset</button>
+
+    <div class="speed-group">
+      <label>Kecepatan</label>
+      <input type="range" id="speedSlider" min="0.2" max="3" step="0.1" value="0.8" oninput="updateSpeed(this.value)">
+      <span id="speedVal">0.8×</span>
+    </div>
+
+    <div class="font-group">
+      <label>Font</label>
+      <input type="range" id="fontSlider" min="14" max="32" step="1" value="20" oninput="updateFont(this.value)">
+      <span id="fontVal">20px</span>
+    </div>
+  </div>
+
+  <div id="progress-wrap">
+    <div id="progressBar"><div id="progressFill"></div></div>
+    <span id="progressTxt">0%</span>
+  </div>
+</div>
+
+<div id="viewport">
+  <div id="cursor-line"></div>
+  <div id="pause-overlay">
+    <div>⏸<span>PAUSED — tekan Spasi untuk lanjut</span></div>
+  </div>
+  <div id="scroller">
+
+    <!-- ══════════ BAGIAN 0 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 0 — Persiapan</div>
+      <div class="ucap"><p>Sebelum mulai rekam, pastikan sudah menjalankan: flutter create bilangan_prima, lalu cd bilangan_prima, lalu code . untuk membuka di VSCode. Buka file lib/main.dart dan hapus semua isi defaultnya. Siapkan Chrome sebagai target dengan flutter run -d chrome setelah koding selesai.</p></div>
+    </div>
+
+    <!-- ══════════ BAGIAN 1 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 1 — Pembukaan</div>
+      <div class="ucap"><p>Halo, selamat datang di sesi live coding saya. Pada kesempatan ini, saya akan membuat aplikasi Flutter dari awal dengan studi kasus Penentu Bilangan Prima. Program ini akan mengimplementasikan empat topik dasar pemrograman Dart, yaitu: Fungsi, If-Else, For Loop, dan While Loop. Kita mulai dari file main.dart yang masih kosong.</p></div>
+    </div>
+
+    <!-- ══════════ BAGIAN 2 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 2 — Import &amp; Main</div>
+      <div class="ucap"><p>Langkah pertama, kita import package Flutter Material yang berisi semua widget dasar yang akan kita gunakan. Kemudian kita buat fungsi main sebagai titik masuk program.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini — main.dart</span></div>
+        <pre><span class="kw">import</span> <span class="str">'package:flutter/material.dart'</span>;
+
+<span class="kw">void</span> <span class="fn">main</span>() {
+  <span class="fn">runApp</span>(<span class="kw">const</span> <span class="type">BilanganPrimaApp</span>());
+}</pre>
+      </div>
+      <div class="ucap"><p>Fungsi main ini adalah entry point — titik pertama yang dijalankan saat aplikasi dibuka. Di dalamnya kita memanggil runApp dan meneruskan widget utama kita yang bernama BilanganPrimaApp.</p></div>
+    </div>
+
+    <!-- ══════════ BAGIAN 3 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 3 — Root Widget</div>
+      <div class="ucap"><p>Selanjutnya kita buat kelas BilanganPrimaApp sebagai StatelessWidget. Widget ini berfungsi sebagai akar dari seluruh aplikasi kita. Di dalamnya kita konfigurasi tema dan halaman awal.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini — main.dart</span></div>
+        <pre><span class="kw">class</span> <span class="type">BilanganPrimaApp</span> <span class="kw">extends</span> <span class="type">StatelessWidget</span> {
+  <span class="kw">const</span> <span class="type">BilanganPrimaApp</span>({<span class="kw">super</span>.key});
+
+  @override
+  <span class="type">Widget</span> <span class="fn">build</span>(<span class="type">BuildContext</span> context) {
+    <span class="kw">return</span> <span class="type">MaterialApp</span>(
+      title: <span class="str">'Bilangan Prima'</span>,
+      debugShowCheckedModeBanner: <span class="kw">false</span>,
+      theme: <span class="type">ThemeData</span>(
+        colorSchemeSeed: <span class="kw">const</span> <span class="type">Color</span>(<span class="num">0xFF5C3CF5</span>),
+        useMaterial3: <span class="kw">true</span>,
+      ),
+      home: <span class="kw">const</span> <span class="type">HomePage</span>(),
+    );
+  }
+}</pre>
+      </div>
+      <div class="ucap"><p>colorSchemeSeed kita isi dengan warna ungu sebagai warna utama aplikasi. useMaterial3 kita set true agar menggunakan desain Material terbaru. Dan home kita arahkan ke HomePage yang akan kita buat berikutnya.</p></div>
+    </div>
+
+    <!-- ══════════ BAGIAN 4 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 4 — Fungsi adalahPrima (Fungsi + If-Else + For Loop)</div>
+      <div class="ucap"><p>Sekarang kita masuk ke bagian inti program — fungsi untuk mengecek apakah sebuah bilangan adalah prima. Fungsi ini berdiri sendiri di luar kelas, sehingga bisa dipanggil dari mana saja. Di sinilah tiga topik sekaligus diimplementasikan: Fungsi, If-Else, dan For Loop.</p></div>
+      <div class="ucap"><p>Kita mulai dengan menulis deklarasi fungsinya. Fungsi ini menerima satu parameter integer n, dan mengembalikan nilai boolean — true jika prima, false jika bukan.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini</span></div>
+        <pre><span class="kw">bool</span> <span class="fn">adalahPrima</span>(<span class="kw">int</span> n) {</pre>
+      </div>
+      <div class="ucap"><p>Percabangan if pertama: bilangan yang kurang dari atau sama dengan 1 pasti bukan prima. Kita langsung kembalikan false.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini</span></div>
+        <pre>  <span class="kw">if</span> (n &lt;= <span class="num">1</span>) <span class="kw">return false</span>;</pre>
+      </div>
+      <div class="ucap"><p>Percabangan kedua: angka 2 adalah satu-satunya bilangan prima yang genap. Kita tangani sebagai kasus khusus dan langsung kembalikan true.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini</span></div>
+        <pre>  <span class="kw">if</span> (n == <span class="num">2</span>) <span class="kw">return true</span>;</pre>
+      </div>
+      <div class="ucap"><p>Percabangan ketiga: semua bilangan genap selain 2 pasti bukan prima karena habis dibagi 2. Kita kembalikan false untuk menghemat komputasi.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini</span></div>
+        <pre>  <span class="kw">if</span> (n % <span class="num">2</span> == <span class="num">0</span>) <span class="kw">return false</span>;</pre>
+      </div>
+      <div class="ucap"><p>Sekarang For Loop. Kita cek apakah n punya pembagi selain 1 dan dirinya sendiri. Kita mulai dari 3 dan loncat 2 angka — hanya bilangan ganjil. Kondisi berhenti i kali i lebih dari n, setara dengan i lebih dari akar kuadrat n. Ini adalah optimasi agar tidak perlu memeriksa semua angka hingga n.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini — selesaikan fungsi</span></div>
+        <pre>  <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">3</span>; i * i &lt;= n; i += <span class="num">2</span>) {
+    <span class="kw">if</span> (n % i == <span class="num">0</span>) <span class="kw">return false</span>;
+  }
+  <span class="kw">return true</span>;
+}</pre>
+      </div>
+      <div class="ucap"><p>Jika loop selesai tanpa menemukan pembagi, berarti bilangan tersebut prima dan kita kembalikan true.</p></div>
+    </div>
+
+    <!-- ══════════ BAGIAN 5 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 5 — Fungsi primaDalamRentang (Fungsi + For Loop)</div>
+      <div class="ucap"><p>Fungsi kedua adalah primaDalamRentang. Fungsi ini menerima dua parameter — batas awal dan batas akhir — kemudian mengumpulkan semua bilangan prima dalam rentang tersebut ke dalam sebuah List dan mengembalikannya.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini</span></div>
+        <pre><span class="type">List</span>&lt;<span class="kw">int</span>&gt; <span class="fn">primaDalamRentang</span>(<span class="kw">int</span> awal, <span class="kw">int</span> akhir) {
+  <span class="type">List</span>&lt;<span class="kw">int</span>&gt; hasil = [];
+  <span class="kw">for</span> (<span class="kw">int</span> i = awal; i &lt;= akhir; i++) {
+    <span class="kw">if</span> (<span class="fn">adalahPrima</span>(i)) hasil.<span class="fn">add</span>(i);
+  }
+  <span class="kw">return</span> hasil;
+}</pre>
+      </div>
+      <div class="ucap"><p>Kita buat list kosong bernama hasil. Lalu dengan For Loop, kita iterasi setiap angka dari awal hingga akhir. Setiap angka kita masukkan ke fungsi adalahPrima. Kalau hasilnya true, angka tersebut kita tambahkan ke list. Di akhir, list dikembalikan.</p></div>
+    </div>
+
+    <!-- ══════════ BAGIAN 6 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 6 — HomePage dengan TabBar</div>
+      <div class="ucap"><p>Sekarang kita bangun antarmuka atau UI-nya. Kita mulai dengan HomePage yang menggunakan TabBar — navigasi tab yang membagi aplikasi menjadi dua bagian: Tab Cek Angka dan Tab Rentang.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini</span></div>
+        <pre><span class="kw">class</span> <span class="type">HomePage</span> <span class="kw">extends</span> <span class="type">StatelessWidget</span> {
+  <span class="kw">const</span> <span class="type">HomePage</span>({<span class="kw">super</span>.key});
+
+  @override
+  <span class="type">Widget</span> <span class="fn">build</span>(<span class="type">BuildContext</span> context) {
+    <span class="kw">return</span> <span class="type">DefaultTabController</span>(
+      length: <span class="num">2</span>,
+      child: <span class="type">Scaffold</span>(
+        appBar: <span class="type">AppBar</span>(
+          title: <span class="kw">const</span> <span class="type">Text</span>(<span class="str">'Bilangan Prima'</span>),
+          centerTitle: <span class="kw">true</span>,
+          backgroundColor: <span class="kw">const</span> <span class="type">Color</span>(<span class="num">0xFF5C3CF5</span>),
+          foregroundColor: <span class="type">Colors</span>.white,
+          bottom: <span class="kw">const</span> <span class="type">TabBar</span>(
+            indicatorColor: <span class="type">Colors</span>.white,
+            labelColor: <span class="type">Colors</span>.white,
+            unselectedLabelColor: <span class="type">Colors</span>.white60,
+            tabs: [
+              <span class="type">Tab</span>(icon: <span class="type">Icon</span>(<span class="type">Icons</span>.search), text: <span class="str">'Cek Angka'</span>),
+              <span class="type">Tab</span>(icon: <span class="type">Icon</span>(<span class="type">Icons</span>.format_list_numbered), text: <span class="str">'Rentang'</span>),
+            ],
+          ),
+        ),
+        body: <span class="kw">const</span> <span class="type">TabBarView</span>(children: [<span class="type">TabCekAngka</span>(), <span class="type">TabRentang</span>()]),
+      ),
+    );
+  }
+}</pre>
+      </div>
+      <div class="ucap"><p>DefaultTabController kita beri length 2 karena ada dua tab. AppBar kita beri warna ungu sesuai tema. TabBar di bagian bawah berisi dua tab dengan ikon dan teks. TabBarView di body menghubungkan setiap tab ke widget yang sesuai.</p></div>
+    </div>
+
+    <!-- ══════════ BAGIAN 7 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 7 — TabCekAngka (If-Else + Fungsi)</div>
+      <div class="ucap"><p>Sekarang kita buat Tab pertama — TabCekAngka. Tab ini adalah StatefulWidget karena tampilannya berubah sesuai input dan hasil pengecekan. Di sinilah topik If-Else dan Fungsi bekerja bersama.</p></div>
+      <div class="ucap"><p>Kita tulis dulu kerangka StatefulWidget-nya beserta variabel-variabel state yang dibutuhkan.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini — deklarasi kelas</span></div>
+        <pre><span class="kw">class</span> <span class="type">TabCekAngka</span> <span class="kw">extends</span> <span class="type">StatefulWidget</span> {
+  <span class="kw">const</span> <span class="type">TabCekAngka</span>({<span class="kw">super</span>.key});
+  @override
+  <span class="type">State</span>&lt;<span class="type">TabCekAngka</span>&gt; <span class="fn">createState</span>() => <span class="type">_TabCekAngkaState</span>();
+}
+
+<span class="kw">class</span> <span class="type">_TabCekAngkaState</span> <span class="kw">extends</span> <span class="type">State</span>&lt;<span class="type">TabCekAngka</span>&gt; {
+  <span class="kw">final</span> <span class="type">TextEditingController</span> _ctrl = <span class="type">TextEditingController</span>();
+  <span class="type">String</span>? _hasilTeks;
+  <span class="kw">bool</span>? _hasilPrima;</pre>
+      </div>
+      <div class="ucap"><p>TextEditingController digunakan untuk mengambil teks dari input field. _hasilTeks menyimpan pesan yang ditampilkan ke pengguna. _hasilPrima menyimpan nilai boolean hasil pengecekan — null berarti belum dicek.</p></div>
+      <div class="ucap"><p>Sekarang kita tulis metode _cek. Metode ini dipanggil saat pengguna menekan tombol. Di sini If-Else berperan penting untuk validasi input dan menampilkan hasil yang berbeda.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini — metode _cek()</span></div>
+        <pre>  <span class="kw">void</span> <span class="fn">_cek</span>() {
+    <span class="kw">final</span> input = <span class="kw">int</span>.<span class="fn">tryParse</span>(_ctrl.text.<span class="fn">trim</span>());
+    <span class="kw">if</span> (input == <span class="kw">null</span>) {
+      <span class="fn">setState</span>(() {
+        _hasilTeks = <span class="str">'Input tidak valid! Masukkan angka bulat.'</span>;
+        _hasilPrima = <span class="kw">null</span>;
+      });
+      <span class="kw">return</span>;
+    }
+    <span class="kw">final</span> prima = <span class="fn">adalahPrima</span>(input);
+    <span class="fn">setState</span>(() {
+      _hasilPrima = prima;
+      <span class="kw">if</span> (prima) {
+        _hasilTeks = <span class="str">'$input adalah BILANGAN PRIMA'</span>;
+      } <span class="kw">else</span> {
+        _hasilTeks = <span class="str">'$input BUKAN bilangan prima'</span>;
+      }
+    });
+  }</pre>
+      </div>
+      <div class="ucap"><p>int.tryParse mencoba mengubah teks menjadi integer. Kalau gagal hasilnya null. Percabangan if pertama menangani input tidak valid. Kalau valid, kita panggil fungsi adalahPrima. setState memastikan Flutter memperbarui tampilan setelah nilai berubah. Percabangan if-else berikutnya menentukan teks yang ditampilkan sesuai hasil.</p></div>
+      <div class="ucap"><p>Sekarang kita buat tampilan UI dari tab ini. Kita gunakan Column berisi input field, tombol, kotak hasil, dan tombol-tombol cepat.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini — build() TabCekAngka</span></div>
+        <pre>  @override
+  <span class="type">Widget</span> <span class="fn">build</span>(<span class="type">BuildContext</span> context) {
+    <span class="kw">return</span> <span class="type">SingleChildScrollView</span>(
+      padding: <span class="kw">const</span> <span class="type">EdgeInsets</span>.<span class="fn">all</span>(<span class="num">20</span>),
+      child: <span class="type">Column</span>(
+        crossAxisAlignment: <span class="type">CrossAxisAlignment</span>.stretch,
+        children: [
+          <span class="type">TextField</span>(
+            controller: _ctrl,
+            keyboardType: <span class="type">TextInputType</span>.number,
+            decoration: <span class="type">InputDecoration</span>(
+              labelText: <span class="str">'Masukkan bilangan'</span>,
+              hintText: <span class="str">'contoh: 17'</span>,
+              border: <span class="type">OutlineInputBorder</span>(
+                borderRadius: <span class="type">BorderRadius</span>.<span class="fn">circular</span>(<span class="num">12</span>),
+              ),
+              prefixIcon: <span class="kw">const</span> <span class="type">Icon</span>(<span class="type">Icons</span>.numbers),
+            ),
+            onSubmitted: (_) => <span class="fn">_cek</span>(),
+          ),
+          <span class="kw">const</span> <span class="type">SizedBox</span>(height: <span class="num">14</span>),
+          <span class="type">ElevatedButton</span>.<span class="fn">icon</span>(
+            onPressed: _cek,
+            icon: <span class="kw">const</span> <span class="type">Icon</span>(<span class="type">Icons</span>.search),
+            label: <span class="kw">const</span> <span class="type">Text</span>(<span class="str">'Cek Sekarang'</span>),
+            style: <span class="type">ElevatedButton</span>.<span class="fn">styleFrom</span>(
+              backgroundColor: <span class="kw">const</span> <span class="type">Color</span>(<span class="num">0xFF5C3CF5</span>),
+              foregroundColor: <span class="type">Colors</span>.white,
+              padding: <span class="kw">const</span> <span class="type">EdgeInsets</span>.<span class="fn">symmetric</span>(vertical: <span class="num">14</span>),
+              shape: <span class="type">RoundedRectangleBorder</span>(
+                borderRadius: <span class="type">BorderRadius</span>.<span class="fn">circular</span>(<span class="num">12</span>),
+              ),
+            ),
+          ),
+          <span class="kw">const</span> <span class="type">SizedBox</span>(height: <span class="num">20</span>),
+          <span class="kw">if</span> (_hasilTeks != <span class="kw">null</span>)
+            <span class="type">AnimatedContainer</span>(
+              duration: <span class="kw">const</span> <span class="type">Duration</span>(milliseconds: <span class="num">300</span>),
+              padding: <span class="kw">const</span> <span class="type">EdgeInsets</span>.<span class="fn">all</span>(<span class="num">18</span>),
+              decoration: <span class="type">BoxDecoration</span>(
+                color: _hasilPrima == <span class="kw">null</span>
+                    ? <span class="type">Colors</span>.orange.shade50
+                    : _hasilPrima!
+                    ? <span class="type">Colors</span>.green.shade50
+                    : <span class="type">Colors</span>.red.shade50,
+                borderRadius: <span class="type">BorderRadius</span>.<span class="fn">circular</span>(<span class="num">14</span>),
+                border: <span class="type">Border</span>.<span class="fn">all</span>(
+                  color: _hasilPrima == <span class="kw">null</span>
+                      ? <span class="type">Colors</span>.orange.shade200
+                      : _hasilPrima!
+                      ? <span class="type">Colors</span>.green.shade200
+                      : <span class="type">Colors</span>.red.shade200,
+                ),
+              ),
+              child: <span class="type">Row</span>(
+                children: [
+                  <span class="type">Icon</span>(
+                    _hasilPrima == <span class="kw">null</span>
+                        ? <span class="type">Icons</span>.warning_amber_rounded
+                        : _hasilPrima!
+                        ? <span class="type">Icons</span>.check_circle
+                        : <span class="type">Icons</span>.cancel,
+                    color: _hasilPrima == <span class="kw">null</span>
+                        ? <span class="type">Colors</span>.orange
+                        : _hasilPrima!
+                        ? <span class="type">Colors</span>.green
+                        : <span class="type">Colors</span>.red,
+                    size: <span class="num">32</span>,
+                  ),
+                  <span class="kw">const</span> <span class="type">SizedBox</span>(width: <span class="num">14</span>),
+                  <span class="type">Expanded</span>(
+                    child: <span class="type">Text</span>(
+                      _hasilTeks!,
+                      style: <span class="type">TextStyle</span>(
+                        fontSize: <span class="num">16</span>,
+                        fontWeight: <span class="type">FontWeight</span>.w500,
+                        color: _hasilPrima == <span class="kw">null</span>
+                            ? <span class="type">Colors</span>.orange.shade800
+                            : _hasilPrima!
+                            ? <span class="type">Colors</span>.green.shade800
+                            : <span class="type">Colors</span>.red.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          <span class="kw">const</span> <span class="type">SizedBox</span>(height: <span class="num">24</span>),
+          <span class="kw">const</span> <span class="type">Text</span>(
+            <span class="str">'Coba cepat:'</span>,
+            style: <span class="type">TextStyle</span>(
+              fontWeight: <span class="type">FontWeight</span>.w500,
+              fontSize: <span class="num">13</span>,
+              color: <span class="type">Colors</span>.grey,
+            ),
+          ),
+          <span class="kw">const</span> <span class="type">SizedBox</span>(height: <span class="num">10</span>),
+          <span class="type">Wrap</span>(
+            spacing: <span class="num">8</span>,
+            runSpacing: <span class="num">8</span>,
+            children: [<span class="num">2</span>, <span class="num">7</span>, <span class="num">13</span>, <span class="num">17</span>, <span class="num">25</span>, <span class="num">97</span>, <span class="num">100</span>, <span class="num">101</span>].map((n) {
+              <span class="kw">return</span> <span class="type">ActionChip</span>(
+                label: <span class="type">Text</span>(<span class="str">'$n'</span>),
+                onPressed: () {
+                  _ctrl.text = <span class="str">'$n'</span>;
+                  <span class="fn">_cek</span>();
+                },
+              );
+            }).<span class="fn">toList</span>(),
+          ),
+        ],
+      ),
+    );
+  }
+}</pre>
+      </div>
+      <div class="ucap"><p>AnimatedContainer secara otomatis menganimasikan perubahan warna saat hasil berubah. Warnanya dinamis — hijau kalau prima, merah kalau bukan, orange kalau input tidak valid. Wrap dengan ActionChip di bawah memungkinkan pengguna mencoba angka tertentu dengan sekali klik.</p></div>
+    </div>
+
+    <!-- ══════════ BAGIAN 8 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 8 — TabRentang (While Loop + If-Else + Fungsi)</div>
+      <div class="ucap"><p>Tab kedua adalah TabRentang. Di sinilah topik While Loop diimplementasikan sebagai cara alternatif melakukan perulangan. Pengguna memasukkan batas awal dan batas akhir, lalu program menampilkan semua bilangan prima dalam rentang tersebut.</p></div>
+      <div class="ucap"><p>Kita tulis dulu kerangka kelas dan variabel state-nya.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini — deklarasi TabRentang</span></div>
+        <pre><span class="kw">class</span> <span class="type">TabRentang</span> <span class="kw">extends</span> <span class="type">StatefulWidget</span> {
+  <span class="kw">const</span> <span class="type">TabRentang</span>({<span class="kw">super</span>.key});
+  @override
+  <span class="type">State</span>&lt;<span class="type">TabRentang</span>&gt; <span class="fn">createState</span>() => <span class="type">_TabRentangState</span>();
+}
+
+<span class="kw">class</span> <span class="type">_TabRentangState</span> <span class="kw">extends</span> <span class="type">State</span>&lt;<span class="type">TabRentang</span>&gt; {
+  <span class="kw">final</span> <span class="type">TextEditingController</span> _awalCtrl = <span class="type">TextEditingController</span>(text: <span class="str">'1'</span>);
+  <span class="kw">final</span> <span class="type">TextEditingController</span> _akhirCtrl = <span class="type">TextEditingController</span>(text: <span class="str">'50'</span>);
+  <span class="type">List</span>&lt;<span class="kw">int</span>&gt; _hasil = [];
+  <span class="type">String</span>? _pesan;
+  <span class="kw">bool</span> _sudahCari = <span class="kw">false</span>;</pre>
+      </div>
+      <div class="ucap"><p>Kita punya dua controller untuk dua input field — batas awal dan batas akhir, dengan nilai awal 1 dan 50. _hasil adalah list yang menyimpan bilangan prima yang ditemukan. _sudahCari menentukan kapan hasil mulai ditampilkan.</p></div>
+      <div class="ucap"><p>Sekarang metode _cari dengan While Loop. Berbeda dengan For Loop yang increment-nya otomatis, While Loop mengharuskan kita mengelola variabel counter secara manual.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini — metode _cari() dengan While Loop</span></div>
+        <pre>  <span class="kw">void</span> <span class="fn">_cari</span>() {
+    <span class="kw">final</span> awal = <span class="kw">int</span>.<span class="fn">tryParse</span>(_awalCtrl.text.<span class="fn">trim</span>());
+    <span class="kw">final</span> akhir = <span class="kw">int</span>.<span class="fn">tryParse</span>(_akhirCtrl.text.<span class="fn">trim</span>());
+    <span class="kw">if</span> (awal == <span class="kw">null</span> || akhir == <span class="kw">null</span>) {
+      <span class="fn">setState</span>(() {
+        _pesan = <span class="str">'Input tidak valid!'</span>;
+        _hasil = [];
+        _sudahCari = <span class="kw">true</span>;
+      });
+      <span class="kw">return</span>;
+    }
+    <span class="kw">if</span> (awal &gt; akhir) {
+      <span class="fn">setState</span>(() {
+        _pesan = <span class="str">'Batas awal tidak boleh lebih besar dari batas akhir.'</span>;
+        _hasil = [];
+        _sudahCari = <span class="kw">true</span>;
+      });
+      <span class="kw">return</span>;
+    }
+    <span class="type">List</span>&lt;<span class="kw">int</span>&gt; temp = [];
+    <span class="kw">int</span> i = awal;
+    <span class="kw">while</span> (i &lt;= akhir) {
+      <span class="kw">if</span> (<span class="fn">adalahPrima</span>(i)) temp.<span class="fn">add</span>(i);
+      i++;
+    }
+    <span class="fn">setState</span>(() {
+      _hasil = temp;
+      _pesan = <span class="kw">null</span>;
+      _sudahCari = <span class="kw">true</span>;
+    });
+  }</pre>
+      </div>
+      <div class="ucap"><p>Kita validasi dua input dulu dengan If-Else. Kalau salah satu null berarti bukan angka, kita tampilkan pesan error. Kalau awal lebih besar dari akhir juga tidak valid. Lalu kita masuk ke While Loop. Variabel i dimulai dari awal, loop berjalan selama i masih kurang dari atau sama dengan akhir. Di dalam loop kita panggil fungsi adalahPrima. Kalau true, angka ditambahkan ke list temp. Setelah itu i kita tambah 1 secara manual. Inilah perbedaan utama While Loop dengan For Loop.</p></div>
+      <div class="ucap"><p>Terakhir kita buat tampilan Tab Rentang dengan dua input field berdampingan, tombol, dan area hasil.</p></div>
+      <div class="ketik">
+        <div class="ketik-header"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="ketik-label">⌨ ketik ini — build() TabRentang</span></div>
+        <pre>  @override
+  <span class="type">Widget</span> <span class="fn">build</span>(<span class="type">BuildContext</span> context) {
+    <span class="kw">return</span> <span class="type">SingleChildScrollView</span>(
+      padding: <span class="kw">const</span> <span class="type">EdgeInsets</span>.<span class="fn">all</span>(<span class="num">20</span>),
+      child: <span class="type">Column</span>(
+        crossAxisAlignment: <span class="type">CrossAxisAlignment</span>.stretch,
+        children: [
+          <span class="type">Row</span>(
+            children: [
+              <span class="type">Expanded</span>(
+                child: <span class="type">TextField</span>(
+                  controller: _awalCtrl,
+                  keyboardType: <span class="type">TextInputType</span>.number,
+                  decoration: <span class="type">InputDecoration</span>(
+                    labelText: <span class="str">'Dari'</span>,
+                    border: <span class="type">OutlineInputBorder</span>(
+                      borderRadius: <span class="type">BorderRadius</span>.<span class="fn">circular</span>(<span class="num">12</span>),
+                    ),
+                  ),
+                ),
+              ),
+              <span class="kw">const</span> <span class="type">Padding</span>(
+                padding: <span class="type">EdgeInsets</span>.<span class="fn">symmetric</span>(horizontal: <span class="num">12</span>),
+                child: <span class="type">Text</span>(<span class="str">'—'</span>, style: <span class="type">TextStyle</span>(fontSize: <span class="num">20</span>)),
+              ),
+              <span class="type">Expanded</span>(
+                child: <span class="type">TextField</span>(
+                  controller: _akhirCtrl,
+                  keyboardType: <span class="type">TextInputType</span>.number,
+                  decoration: <span class="type">InputDecoration</span>(
+                    labelText: <span class="str">'Sampai'</span>,
+                    border: <span class="type">OutlineInputBorder</span>(
+                      borderRadius: <span class="type">BorderRadius</span>.<span class="fn">circular</span>(<span class="num">12</span>),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          <span class="kw">const</span> <span class="type">SizedBox</span>(height: <span class="num">14</span>),
+          <span class="type">ElevatedButton</span>.<span class="fn">icon</span>(
+            onPressed: _cari,
+            icon: <span class="kw">const</span> <span class="type">Icon</span>(<span class="type">Icons</span>.format_list_numbered),
+            label: <span class="kw">const</span> <span class="type">Text</span>(<span class="str">'Tampilkan Bilangan Prima'</span>),
+            style: <span class="type">ElevatedButton</span>.<span class="fn">styleFrom</span>(
+              backgroundColor: <span class="kw">const</span> <span class="type">Color</span>(<span class="num">0xFF5C3CF5</span>),
+              foregroundColor: <span class="type">Colors</span>.white,
+              padding: <span class="kw">const</span> <span class="type">EdgeInsets</span>.<span class="fn">symmetric</span>(vertical: <span class="num">14</span>),
+              shape: <span class="type">RoundedRectangleBorder</span>(
+                borderRadius: <span class="type">BorderRadius</span>.<span class="fn">circular</span>(<span class="num">12</span>),
+              ),
+            ),
+          ),
+          <span class="kw">const</span> <span class="type">SizedBox</span>(height: <span class="num">20</span>),
+          <span class="kw">if</span> (_sudahCari) ...[
+            <span class="kw">if</span> (_pesan != <span class="kw">null</span>)
+              <span class="type">Container</span>(
+                padding: <span class="kw">const</span> <span class="type">EdgeInsets</span>.<span class="fn">all</span>(<span class="num">14</span>),
+                decoration: <span class="type">BoxDecoration</span>(
+                  color: <span class="type">Colors</span>.orange.shade50,
+                  borderRadius: <span class="type">BorderRadius</span>.<span class="fn">circular</span>(<span class="num">12</span>),
+                  border: <span class="type">Border</span>.<span class="fn">all</span>(color: <span class="type">Colors</span>.orange.shade200),
+                ),
+                child: <span class="type">Text</span>(
+                  _pesan!,
+                  style: <span class="type">TextStyle</span>(color: <span class="type">Colors</span>.orange.shade800),
+                ),
+              )
+            <span class="kw">else if</span> (_hasil.isEmpty)
+              <span class="kw">const</span> <span class="type">Center</span>(
+                child: <span class="type">Padding</span>(
+                  padding: <span class="type">EdgeInsets</span>.<span class="fn">all</span>(<span class="num">20</span>),
+                  child: <span class="type">Text</span>(
+                    <span class="str">'Tidak ada bilangan prima dalam rentang ini.'</span>,
+                    style: <span class="type">TextStyle</span>(color: <span class="type">Colors</span>.grey),
+                  ),
+                ),
+              )
+            <span class="kw">else</span> ...[
+              <span class="type">Container</span>(
+                padding: <span class="kw">const</span> <span class="type">EdgeInsets</span>.<span class="fn">symmetric</span>(
+                  horizontal: <span class="num">14</span>,
+                  vertical: <span class="num">10</span>,
+                ),
+                decoration: <span class="type">BoxDecoration</span>(
+                  color: <span class="kw">const</span> <span class="type">Color</span>(<span class="num">0xFFF0EEFF</span>),
+                  borderRadius: <span class="type">BorderRadius</span>.<span class="fn">circular</span>(<span class="num">10</span>),
+                ),
+                child: <span class="type">Text</span>(
+                  <span class="str">'Ditemukan ${_hasil.length} bilangan prima'</span>,
+                  style: <span class="kw">const</span> <span class="type">TextStyle</span>(
+                    color: <span class="type">Color</span>(<span class="num">0xFF5C3CF5</span>),
+                    fontWeight: <span class="type">FontWeight</span>.w500,
+                  ),
+                ),
+              ),
+              <span class="kw">const</span> <span class="type">SizedBox</span>(height: <span class="num">12</span>),
+              <span class="type">Wrap</span>(
+                spacing: <span class="num">8</span>,
+                runSpacing: <span class="num">8</span>,
+                children: _hasil
+                    .map(
+                      (n) => <span class="type">Chip</span>(
+                        label: <span class="type">Text</span>(
+                          <span class="str">'$n'</span>,
+                          style: <span class="kw">const</span> <span class="type">TextStyle</span>(
+                            color: <span class="type">Colors</span>.white,
+                            fontWeight: <span class="type">FontWeight</span>.w500,
+                          ),
+                        ),
+                        backgroundColor: <span class="kw">const</span> <span class="type">Color</span>(<span class="num">0xFF5C3CF5</span>),
+                      ),
+                    )
+                    .<span class="fn">toList</span>(),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}</pre>
+      </div>
+      <div class="ucap"><p>Row berisi dua TextField yang dibungkus Expanded agar lebarnya sama rata. if _sudahCari menggunakan spread operator tiga titik untuk memasukkan beberapa widget sekaligus. Ada tiga kondisi yang ditangani If-Else: ada pesan error, hasil kosong, atau ada hasil berupa chip-chip ungu berisi angka prima.</p></div>
+    </div>
+
+    <!-- ══════════ BAGIAN 9 ══════════ -->
+    <div class="block">
+      <div class="bagian-label">Bagian 9 — Run &amp; Penutup</div>
+      <div class="ucap"><p>Kode program sudah selesai ditulis seluruhnya. Sekarang kita jalankan di Chrome. Ketik di terminal: flutter run -d chrome</p></div>
+      <div class="ucap"><p>Tunggu beberapa saat hingga aplikasi terbuka di browser Chrome. Setelah aplikasi berjalan, kita bisa langsung mencoba fitur-fiturnya.</p></div>
+      <div class="ucap"><p>Kita coba Tab Cek Angka terlebih dahulu. Saya masukkan angka 17 dan tekan Cek Sekarang — hasilnya menunjukkan 17 adalah bilangan prima dengan kotak hijau. Sekarang kita coba angka 25 — hasilnya bukan prima karena 25 habis dibagi 5. Kita juga bisa menekan tombol-tombol cepat di bawah untuk mencoba angka lain.</p></div>
+      <div class="ucap"><p>Sekarang pindah ke Tab Rentang. Saya masukkan dari 1 sampai 50, lalu tekan Tampilkan Bilangan Prima. Terlihat semua bilangan prima dalam rentang 1 hingga 50 ditampilkan dalam bentuk chip ungu, beserta jumlah total prima yang ditemukan.</p></div>
+      <div class="ucap"><p>Demikian live coding Aplikasi Penentu Bilangan Prima menggunakan Flutter dan Dart. Program ini berhasil mengimplementasikan empat topik dasar: Fungsi dalam bentuk adalahPrima dan primaDalamRentang, If-Else untuk validasi input dan pengecekan kondisi prima, For Loop untuk iterasi pembagi dan rentang bilangan, serta While Loop sebagai alternatif perulangan di Tab Rentang. Terima kasih.</p></div>
+    </div>
+
+  </div><!-- end scroller -->
+</div><!-- end viewport -->
+
+<script>
+  let playing = false;
+  let speed = 0.8;
+  let animId = null;
+  let pos = 0;
+  const scroller = document.getElementById('scroller');
+  const viewport = document.getElementById('viewport');
+  const playBtn = document.getElementById('playBtn');
+  const pauseOverlay = document.getElementById('pause-overlay');
+  const progressFill = document.getElementById('progressFill');
+  const progressTxt = document.getElementById('progressTxt');
+
+  function getMaxScroll() {
+    return scroller.scrollHeight - viewport.clientHeight;
+  }
+
+  function updateProgress() {
+    const max = getMaxScroll();
+    const pct = max > 0 ? Math.min(100, (pos / max) * 100) : 0;
+    progressFill.style.width = pct.toFixed(1) + '%';
+    progressTxt.textContent = Math.round(pct) + '%';
+  }
+
+  function step() {
+    if (!playing) return;
+    pos += speed * 0.6;
+    const max = getMaxScroll();
+    if (pos >= max) {
+      pos = max;
+      playing = false;
+      playBtn.textContent = '▶ Play';
+      pauseOverlay.classList.remove('show');
+    }
+    scroller.style.transform = `translateY(${-pos}px)`;
+    updateProgress();
+    animId = requestAnimationFrame(step);
+  }
+
+  function togglePlay() {
+    playing = !playing;
+    if (playing) {
+      playBtn.textContent = '⏸ Pause';
+      pauseOverlay.classList.remove('show');
+      animId = requestAnimationFrame(step);
+    } else {
+      playBtn.textContent = '▶ Play';
+      pauseOverlay.classList.add('show');
+      cancelAnimationFrame(animId);
+    }
+  }
+
+  function resetScroll() {
+    playing = false;
+    cancelAnimationFrame(animId);
+    pos = 0;
+    scroller.style.transform = 'translateY(0)';
+    playBtn.textContent = '▶ Play';
+    pauseOverlay.classList.remove('show');
+    updateProgress();
+  }
+
+  function updateSpeed(val) {
+    speed = parseFloat(val);
+    document.getElementById('speedVal').textContent = parseFloat(val).toFixed(1) + '×';
+  }
+
+  function updateFont(val) {
+    document.getElementById('scroller').style.setProperty('--fs', val + 'px');
+    document.getElementById('fontVal').textContent = val + 'px';
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    if (e.code === 'ArrowUp') { e.preventDefault(); pos = Math.max(0, pos - 60); scroller.style.transform = `translateY(${-pos}px)`; updateProgress(); }
+    if (e.code === 'ArrowDown') { e.preventDefault(); pos = Math.min(getMaxScroll(), pos + 60); scroller.style.transform = `translateY(${-pos}px)`; updateProgress(); }
+    if (e.code === 'KeyR') resetScroll();
+  });
+
+  // Mouse wheel
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    pos = Math.max(0, Math.min(getMaxScroll(), pos + e.deltaY));
+    scroller.style.transform = `translateY(${-pos}px)`;
+    updateProgress();
+  }, { passive: false });
+
+  updateProgress();
+</script>
+</body>
+</html>
